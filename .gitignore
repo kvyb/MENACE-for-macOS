@@ -1,0 +1,17 @@
+.build/
+.swiftpm/
+.DS_Store
+*.dmg
+*.rar
+*.7z
+*.zip
+*.tar
+*.xz
+*.exe
+*.dll
+MENACE.app/
+BUILD-REPORT.txt
+Dependencies/
+dist/
+test-cache/
+test-output/

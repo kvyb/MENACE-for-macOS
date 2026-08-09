@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import MENACEBuilder
@@ -121,6 +122,7 @@ final class BuilderTests: XCTestCase {
         XCTAssertNil(output["NSHighResolutionCapable"])
         XCTAssertEqual(output["Program Name and Path"] as? String, "/MENACE/Menace.exe")
         XCTAssertEqual(output["CFBundleIdentifier"] as? String, "io.github.kvyb.MENACEForMacOS")
+        XCTAssertEqual(output["CFBundleIconFile"] as? String, "MENACE.icns")
     }
 
     func testSteamAppPlistTargetsSteam() throws {
@@ -140,6 +142,36 @@ final class BuilderTests: XCTestCase {
         XCTAssertEqual(output["Program Name and Path"] as? String, "/Program Files (x86)/Steam/steam.exe")
         XCTAssertEqual(output["CFBundleIdentifier"] as? String, "io.github.kvyb.MENACEForMacOS.Steam")
         XCTAssertEqual(output["CFBundleShortVersionString"] as? String, MENACEBuilder.version)
+    }
+
+    func testInstallsRetinaAppIcon() throws {
+        let artwork = temporary.appendingPathComponent("artwork.png")
+        let app = temporary.appendingPathComponent("MENACE.app", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: app.appendingPathComponent("Contents/Resources", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 600,
+            pixelsHigh: 900,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        bitmap.bitmapData?.initialize(repeating: 0x7f, count: bitmap.bytesPerRow * bitmap.pixelsHigh)
+        try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: artwork)
+
+        try AppIcon.install(artwork: artwork, in: app, runner: ProcessRunner())
+
+        let icon = app.appendingPathComponent("Contents/Resources/MENACE.icns")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: icon.path))
+        XCTAssertNotNil(NSImage(contentsOf: icon))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: app.appendingPathComponent("Contents/Resources/MENACE.iconset").path))
     }
 
     func testDependencyLockHasUniqueFilesAndSHA256Values() {

@@ -11,6 +11,7 @@ The CLI downloads these pinned components from their official publishers:
 | DXMT | 0.74, included by Sikarugir | [Sikarugir-App/dxmt](https://github.com/Sikarugir-App/dxmt) | LGPL-2.1 |
 | 7-Zip | 26.02 | [ip7z/7zip](https://github.com/ip7z/7zip/releases/tag/26.02) | LGPL-2.1-or-later with unRAR restriction; BSD portions |
 | Steam installer | Pinned 2026-08-05 download | [Valve](https://store.steampowered.com/about/) | Valve terms; downloaded only for Steam mode |
+| MENACE library artwork | Pinned 2026-08-09 download | [MENACE on Steam](https://store.steampowered.com/app/2432860/MENACE/) | Overhype Studios / Hooded Horse artwork; converted only into generated local app icons |
 
 Exact URLs and SHA-256 values are recorded in [`Dependencies.lock.json`](Dependencies.lock.json).
 

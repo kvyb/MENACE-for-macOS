@@ -29,6 +29,14 @@
       "url": "https://cdn.cloudflare.steamstatic.com/client/installer/SteamSetup.exe",
       "sha256": "7d3654531c32d941b8cae81c4137fc542172bfa9635f169cb392f245a0a12bcb",
       "usage": "Downloaded and verified by the generated Steam wrapper on first launch"
+    },
+    {
+      "name": "Official MENACE Steam library artwork",
+      "version": "2026-08-09",
+      "file": "MENACE-library-600x900.jpg",
+      "url": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2432860/library_600x900_2x.jpg",
+      "sha256": "5c435807d61ca26252d016d7f9afdc1099596a85e13bd705bc7a33bcab6fd235",
+      "usage": "Downloaded and converted locally into the generated macOS app icon"
     }
   ]
 }

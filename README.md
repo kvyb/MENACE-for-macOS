@@ -66,6 +66,7 @@ If macOS blocks the generated app, right-click `MENACE.app`, choose **Open**, th
 
 - Local MENACE v0.7.2 reached the title screen on an Apple M3 Mac.
 - The wrapper forces Direct3D 11 through DXMT, matching MENACE's working configuration.
+- Generated apps use checksum-verified official MENACE Steam artwork as a Retina macOS icon.
 - Steam bootstrap, installer checksum, app ID `2432860`, install-manifest detection, and launch arguments have automated coverage.
 - A full Steam download still requires an account that owns the game, so that last ownership-dependent step was not run here.
 

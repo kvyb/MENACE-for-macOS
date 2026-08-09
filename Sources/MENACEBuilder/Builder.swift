@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import Darwin
 import Foundation
@@ -61,7 +62,15 @@ public enum LockedDependencies {
         sha256: "7d3654531c32d941b8cae81c4137fc542172bfa9635f169cb392f245a0a12bcb"
     )
 
-    public static let all = [template, engine, sevenZip, steamInstaller]
+    public static let artwork = LockedDependency(
+        name: "Official MENACE Steam library artwork",
+        fileName: "MENACE-library-600x900.jpg",
+        version: "2026-08-09",
+        url: URL(string: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2432860/library_600x900_2x.jpg")!,
+        sha256: "5c435807d61ca26252d016d7f9afdc1099596a85e13bd705bc7a33bcab6fd235"
+    )
+
+    public static let all = [template, engine, sevenZip, steamInstaller, artwork]
 }
 
 public enum BuildSource: Equatable, Sendable {
@@ -310,7 +319,7 @@ public enum GameLayout {
 }
 
 public final class MENACEBuilder {
-    public static let version = "0.1.0"
+    public static let version = "0.2.0"
 
     private let fileManager = FileManager.default
     private let options: BuildOptions
@@ -362,13 +371,15 @@ public final class MENACEBuilder {
         print("[2/7] Getting verified macOS runtime")
         let templateArchive = try dependencyStore.file(for: LockedDependencies.template)
         let engineArchive = try dependencyStore.file(for: LockedDependencies.engine)
+        let artwork = try dependencyStore.file(for: LockedDependencies.artwork)
 
         print("[3/7] Assembling MENACE.app")
         let app = try assembleApp(
             work: work,
             gameVersion: gameVersion,
             templateArchive: templateArchive,
-            engineArchive: engineArchive
+            engineArchive: engineArchive,
+            artwork: artwork
         )
 
         print("[4/7] Initializing private Wine data")
@@ -456,7 +467,8 @@ public final class MENACEBuilder {
         work: URL,
         gameVersion: String?,
         templateArchive: URL,
-        engineArchive: URL
+        engineArchive: URL,
+        artwork: URL
     ) throws -> URL {
         let templateRoot = work.appendingPathComponent("template", isDirectory: true)
         let engineRoot = work.appendingPathComponent("engine", isDirectory: true)
@@ -481,6 +493,7 @@ public final class MENACEBuilder {
 
         try configureInfoPlist(in: app, gameVersion: gameVersion)
         try installLauncher(in: app)
+        try AppIcon.install(artwork: artwork, in: app, runner: runner)
         return app
     }
 
@@ -498,6 +511,7 @@ public final class MENACEBuilder {
         }
         plist["CFBundleName"] = "MENACE"
         plist["CFBundleDisplayName"] = "MENACE"
+        plist["CFBundleIconFile"] = "MENACE.icns"
         plist["CFBundleShortVersionString"] = gameVersion ?? Self.version
         plist["CFBundleVersion"] = "1"
         plist["LSMinimumSystemVersion"] = "13.0"
@@ -710,6 +724,8 @@ public final class MENACEBuilder {
             "Template SHA-256: \(LockedDependencies.template.sha256)",
             "Engine: \(LockedDependencies.engine.version)",
             "Engine SHA-256: \(LockedDependencies.engine.sha256)",
+            "App icon: official Steam library artwork",
+            "App icon SHA-256: \(LockedDependencies.artwork.sha256)",
             "DXMT: v0.74 from the verified template",
             "Renderer: DXMT / Direct3D 11",
             "Host drive mappings: C: only",
@@ -775,6 +791,84 @@ public final class MENACEBuilder {
             try? fileManager.removeItem(at: target)
             try fileManager.copyItem(at: item, to: target)
         }
+    }
+}
+
+enum AppIcon {
+    private static let iconFiles: [(name: String, pixels: Int)] = [
+        ("icon_16x16.png", 16),
+        ("icon_16x16@2x.png", 32),
+        ("icon_32x32.png", 32),
+        ("icon_32x32@2x.png", 64),
+        ("icon_128x128.png", 128),
+        ("icon_128x128@2x.png", 256),
+        ("icon_256x256.png", 256),
+        ("icon_256x256@2x.png", 512),
+        ("icon_512x512.png", 512),
+        ("icon_512x512@2x.png", 1024)
+    ]
+
+    static func install(artwork: URL, in app: URL, runner: ProcessRunner) throws {
+        guard let source = NSImage(contentsOf: artwork) else {
+            throw BuilderFailure.message("The verified MENACE artwork could not be read.")
+        }
+
+        let resources = app.appendingPathComponent("Contents/Resources", isDirectory: true)
+        let iconset = resources.appendingPathComponent("MENACE.iconset", isDirectory: true)
+        let basePNG = resources.appendingPathComponent("MENACE-icon-1024.png")
+        let output = resources.appendingPathComponent("MENACE.icns")
+        try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: iconset)
+            try? FileManager.default.removeItem(at: basePNG)
+        }
+
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 1024,
+            pixelsHigh: 1024,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+            throw BuilderFailure.message("Could not create the MENACE app icon canvas.")
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        context.imageInterpolation = .high
+        NSColor.clear.setFill()
+        NSRect(x: 0, y: 0, width: 1024, height: 1024).fill()
+
+        let destination = NSRect(x: 32, y: 32, width: 960, height: 960)
+        NSBezierPath(roundedRect: destination, xRadius: 210, yRadius: 210).addClip()
+        let side = min(source.size.width, source.size.height)
+        let sourceRect = NSRect(
+            x: (source.size.width - side) / 2,
+            y: source.size.height - side,
+            width: side,
+            height: side
+        )
+        source.draw(in: destination, from: sourceRect, operation: .copy, fraction: 1)
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let png = bitmap.representation(using: .png, properties: [:]) else {
+            throw BuilderFailure.message("Could not encode the MENACE app icon.")
+        }
+        try png.write(to: basePNG, options: .atomic)
+
+        for icon in iconFiles {
+            try runner.run("/usr/bin/sips", [
+                "--resampleHeightWidth", "\(icon.pixels)", "\(icon.pixels)",
+                basePNG.path, "--out", iconset.appendingPathComponent(icon.name).path
+            ])
+        }
+        try? FileManager.default.removeItem(at: output)
+        try runner.run("/usr/bin/iconutil", ["--convert", "icns", "--output", output.path, iconset.path])
     }
 }
 

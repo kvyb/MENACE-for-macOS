@@ -86,6 +86,13 @@ final class BuilderTests: XCTestCase {
         XCTAssertFalse(script.contains("wine.log"))
     }
 
+    func testWineInputConvertsTrackpadScrollingToWindowsWheelTicks() {
+        XCTAssertEqual(WineInput.compatibilityRegistryArguments, [
+            "reg", "add", #"HKCU\Software\Wine\AppDefaults\Menace.exe\Mac Driver"#,
+            "/v", "UsePreciseScrolling", "/t", "REG_SZ", "/d", "N", "/f"
+        ])
+    }
+
     func testSteamLauncherUsesOfficialClientAndDoesNotHandleCredentials() {
         let script = Launcher.script(for: .steam)
         XCTAssertTrue(script.contains(LockedDependencies.steamInstaller.url.absoluteString))

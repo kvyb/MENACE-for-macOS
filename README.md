@@ -83,6 +83,16 @@ Game log:
 MENACE.app/Contents/SharedSupport/prefix/drive_c/users/<you>/AppData/LocalLow/Overhype Studios/Menace/Player.log
 ```
 
+## Camera controls
+
+- Two-finger vertical scroll: zoom
+- `WASD` or arrow keys: pan
+- `Q` / `E`: rotate
+- `Page Up` / `Page Down`: zoom fallback
+- MENACE also uses held middle/right mouse buttons for camera movement. A Mac trackpad has no native middle click, so use the keyboard controls for that action.
+
+The wrapper converts smooth macOS trackpad scrolling into standard Windows wheel ticks for Unity.
+
 ## Important
 
 - Steam mode downloads MENACE from Steam after ownership verification. It does not bypass Steam.

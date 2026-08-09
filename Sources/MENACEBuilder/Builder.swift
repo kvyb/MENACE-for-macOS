@@ -209,6 +209,13 @@ public enum HostChecks {
     }
 }
 
+enum WineInput {
+    static let compatibilityRegistryArguments = [
+        "reg", "add", #"HKCU\Software\Wine\AppDefaults\Menace.exe\Mac Driver"#,
+        "/v", "UsePreciseScrolling", "/t", "REG_SZ", "/d", "N", "/f"
+    ]
+}
+
 public enum GameLayout {
     private static let requiredNames = ["menace.exe", "menace_data", "unityplayer.dll", "gameassembly.dll"]
 
@@ -319,7 +326,7 @@ public enum GameLayout {
 }
 
 public final class MENACEBuilder {
-    public static let version = "0.2.0"
+    public static let version = "0.2.1"
 
     private let fileManager = FileManager.default
     private let options: BuildOptions
@@ -564,6 +571,7 @@ public final class MENACEBuilder {
         let wineserver = contents.appendingPathComponent("SharedSupport/wswine/bin/wineserver")
         let environment = wineEnvironment(contents: contents)
         try runner.run(wine.path, ["wineboot", "-u"], environment: environment)
+        try runner.run(wine.path, WineInput.compatibilityRegistryArguments, environment: environment)
         try runner.run(wineserver.path, ["-w"], environment: environment)
     }
 
@@ -728,6 +736,7 @@ public final class MENACEBuilder {
             "App icon SHA-256: \(LockedDependencies.artwork.sha256)",
             "DXMT: v0.74 from the verified template",
             "Renderer: DXMT / Direct3D 11",
+            "Trackpad scroll: discrete Windows wheel compatibility",
             "Host drive mappings: C: only",
             "Code signature: ad hoc, verified",
             "Game launched during build: no"

@@ -130,6 +130,14 @@ do {
         print(MENACEBuilder.version)
     } else if arguments[0] == "doctor" {
         doctor()
+    } else if arguments[0] == "__render-icon" {
+        guard arguments.count == 3 else {
+            throw BuilderFailure.message("Invalid internal icon renderer arguments.")
+        }
+        try AppIcon.render(
+            artwork: expandedURL(arguments[1]),
+            output: expandedURL(arguments[2])
+        )
     } else {
         let steam = arguments[0] == "steam"
         if arguments[0] == "build" || steam { arguments.removeFirst() }

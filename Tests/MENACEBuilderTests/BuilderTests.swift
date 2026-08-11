@@ -181,6 +181,30 @@ final class BuilderTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: app.appendingPathComponent("Contents/Resources/MENACE.iconset").path))
     }
 
+    func testFallsBackWhenTheIsolatedIconRendererFails() throws {
+        let app = temporary.appendingPathComponent("MENACE.app", isDirectory: true)
+        let resources = app.appendingPathComponent("Contents/Resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        let fallback = resources.appendingPathComponent("Configure.icns")
+        try Data("fallback".utf8).write(to: fallback)
+
+        let renderer = temporary.appendingPathComponent("failing-renderer")
+        try "#!/bin/sh\nexit 139\n".write(to: renderer, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: renderer.path)
+
+        try AppIcon.install(
+            artwork: temporary.appendingPathComponent("unused.jpg"),
+            in: app,
+            runner: ProcessRunner(),
+            rendererExecutable: renderer
+        )
+
+        XCTAssertEqual(
+            try Data(contentsOf: resources.appendingPathComponent("MENACE.icns")),
+            try Data(contentsOf: fallback)
+        )
+    }
+
     func testDependencyLockHasUniqueFilesAndSHA256Values() {
         XCTAssertEqual(Set(LockedDependencies.all.map(\.fileName)).count, LockedDependencies.all.count)
         for dependency in LockedDependencies.all {

@@ -1,7 +1,9 @@
-import AppKit
+import CoreGraphics
 import CryptoKit
 import Darwin
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 public enum BuilderFailure: LocalizedError, Equatable {
     case message(String)
@@ -326,7 +328,7 @@ public enum GameLayout {
 }
 
 public final class MENACEBuilder {
-    public static let version = "0.2.1"
+    public static let version = "0.2.2"
 
     private let fileManager = FileManager.default
     private let options: BuildOptions
@@ -500,7 +502,12 @@ public final class MENACEBuilder {
 
         try configureInfoPlist(in: app, gameVersion: gameVersion)
         try installLauncher(in: app)
-        try AppIcon.install(artwork: artwork, in: app, runner: runner)
+        try AppIcon.install(
+            artwork: artwork,
+            in: app,
+            runner: runner,
+            rendererExecutable: Bundle.main.executableURL
+        )
         return app
     }
 
@@ -803,81 +810,149 @@ public final class MENACEBuilder {
     }
 }
 
-enum AppIcon {
-    private static let iconFiles: [(name: String, pixels: Int)] = [
-        ("icon_16x16.png", 16),
-        ("icon_16x16@2x.png", 32),
-        ("icon_32x32.png", 32),
-        ("icon_32x32@2x.png", 64),
-        ("icon_128x128.png", 128),
-        ("icon_128x128@2x.png", 256),
-        ("icon_256x256.png", 256),
-        ("icon_256x256@2x.png", 512),
-        ("icon_512x512.png", 512),
-        ("icon_512x512@2x.png", 1024)
+public enum AppIcon {
+    // ICNS uses four-byte type codes for each standard and Retina PNG representation.
+    private static let iconFiles: [(name: String, pixels: Int, type: String)] = [
+        ("icon_16x16.png", 16, "icp4"),
+        ("icon_16x16@2x.png", 32, "ic11"),
+        ("icon_32x32.png", 32, "icp5"),
+        ("icon_32x32@2x.png", 64, "ic12"),
+        ("icon_128x128.png", 128, "ic07"),
+        ("icon_128x128@2x.png", 256, "ic13"),
+        ("icon_256x256.png", 256, "ic08"),
+        ("icon_256x256@2x.png", 512, "ic14"),
+        ("icon_512x512.png", 512, "ic09"),
+        ("icon_512x512@2x.png", 1024, "ic10")
     ]
 
-    static func install(artwork: URL, in app: URL, runner: ProcessRunner) throws {
-        guard let source = NSImage(contentsOf: artwork) else {
-            throw BuilderFailure.message("The verified MENACE artwork could not be read.")
-        }
-
+    static func install(
+        artwork: URL,
+        in app: URL,
+        runner: ProcessRunner,
+        rendererExecutable: URL? = nil
+    ) throws {
         let resources = app.appendingPathComponent("Contents/Resources", isDirectory: true)
-        let iconset = resources.appendingPathComponent("MENACE.iconset", isDirectory: true)
-        let basePNG = resources.appendingPathComponent("MENACE-icon-1024.png")
+        let iconWork = app.deletingLastPathComponent()
+            .appendingPathComponent("MENACE-icon-\(UUID().uuidString)", isDirectory: true)
+        let iconset = iconWork.appendingPathComponent("MENACE.iconset", isDirectory: true)
+        let basePNG = iconWork.appendingPathComponent("MENACE-icon-1024.png")
+        let generatedICNS = iconWork.appendingPathComponent("MENACE.icns")
         let output = resources.appendingPathComponent("MENACE.icns")
         try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
         defer {
-            try? FileManager.default.removeItem(at: iconset)
-            try? FileManager.default.removeItem(at: basePNG)
+            try? FileManager.default.removeItem(at: iconWork)
         }
 
-        guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: 1024,
-            pixelsHigh: 1024,
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: 0,
-            bitsPerPixel: 0
-        ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
-            throw BuilderFailure.message("Could not create the MENACE app icon canvas.")
+        do {
+            if let rendererExecutable {
+                try runner.run(rendererExecutable.path, ["__render-icon", artwork.path, basePNG.path])
+            } else {
+                try render(artwork: artwork, output: basePNG)
+            }
+
+            for icon in iconFiles {
+                try runner.run("/usr/bin/sips", [
+                    "--resampleHeightWidth", "\(icon.pixels)", "\(icon.pixels)",
+                    basePNG.path, "--out", iconset.appendingPathComponent(icon.name).path
+                ])
+            }
+            try writeICNS(from: iconset, to: generatedICNS)
+            try? FileManager.default.removeItem(at: output)
+            try FileManager.default.copyItem(at: generatedICNS, to: output)
+        } catch {
+            let fallback = resources.appendingPathComponent("Configure.icns")
+            guard FileManager.default.fileExists(atPath: fallback.path) else { throw error }
+            try? FileManager.default.removeItem(at: output)
+            try FileManager.default.copyItem(at: fallback, to: output)
+            print("  Warning: custom icon generation failed; using the verified wrapper icon.")
+        }
+    }
+
+    public static func render(artwork: URL, output: URL) throws {
+        guard let source = CGImageSourceCreateWithURL(artwork as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+              let context = CGContext(
+                  data: nil,
+                  width: 1024,
+                  height: 1024,
+                  bitsPerComponent: 8,
+                  bytesPerRow: 1024 * 4,
+                  space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              )
+        else {
+            throw BuilderFailure.message("The verified MENACE artwork could not be rendered.")
         }
 
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        context.imageInterpolation = .high
-        NSColor.clear.setFill()
-        NSRect(x: 0, y: 0, width: 1024, height: 1024).fill()
+        context.clear(CGRect(x: 0, y: 0, width: 1024, height: 1024))
+        let destination = CGRect(x: 32, y: 32, width: 960, height: 960)
+        context.saveGState()
+        context.addPath(CGPath(
+            roundedRect: destination,
+            cornerWidth: 210,
+            cornerHeight: 210,
+            transform: nil
+        ))
+        context.clip()
+        context.interpolationQuality = .high
 
-        let destination = NSRect(x: 32, y: 32, width: 960, height: 960)
-        NSBezierPath(roundedRect: destination, xRadius: 210, yRadius: 210).addClip()
-        let side = min(source.size.width, source.size.height)
-        let sourceRect = NSRect(
-            x: (source.size.width - side) / 2,
-            y: source.size.height - side,
+        let side = min(image.width, image.height)
+        let crop = CGRect(
+            x: (image.width - side) / 2,
+            y: (image.height - side) / 2,
             width: side,
             height: side
         )
-        source.draw(in: destination, from: sourceRect, operation: .copy, fraction: 1)
-        NSGraphicsContext.restoreGraphicsState()
-
-        guard let png = bitmap.representation(using: .png, properties: [:]) else {
-            throw BuilderFailure.message("Could not encode the MENACE app icon.")
+        guard let cropped = image.cropping(to: crop) else {
+            throw BuilderFailure.message("The verified MENACE artwork could not be cropped.")
         }
-        try png.write(to: basePNG, options: .atomic)
+        context.draw(cropped, in: destination)
+        context.restoreGState()
 
+        guard let rendered = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(
+                  output as CFURL,
+                  UTType.png.identifier as CFString,
+                  1,
+                  nil
+              )
+        else {
+            throw BuilderFailure.message("The MENACE app icon could not be encoded.")
+        }
+        CGImageDestinationAddImage(destination, rendered, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw BuilderFailure.message("The MENACE app icon could not be written.")
+        }
+    }
+
+    private static func writeICNS(from iconset: URL, to output: URL) throws {
+        var elements = Data()
         for icon in iconFiles {
-            try runner.run("/usr/bin/sips", [
-                "--resampleHeightWidth", "\(icon.pixels)", "\(icon.pixels)",
-                basePNG.path, "--out", iconset.appendingPathComponent(icon.name).path
-            ])
+            let type = Data(icon.type.utf8)
+            guard type.count == 4 else {
+                throw BuilderFailure.message("Invalid MENACE icon representation type.")
+            }
+            let png = try Data(contentsOf: iconset.appendingPathComponent(icon.name))
+            guard png.count <= Int(UInt32.max) - 8 else {
+                throw BuilderFailure.message("A MENACE icon representation is too large.")
+            }
+            elements.append(type)
+            appendBigEndian(UInt32(png.count + 8), to: &elements)
+            elements.append(png)
         }
-        try? FileManager.default.removeItem(at: output)
-        try runner.run("/usr/bin/iconutil", ["--convert", "icns", "--output", output.path, iconset.path])
+
+        guard elements.count <= Int(UInt32.max) - 8 else {
+            throw BuilderFailure.message("The MENACE app icon is too large.")
+        }
+        var icns = Data("icns".utf8)
+        appendBigEndian(UInt32(elements.count + 8), to: &icns)
+        icns.append(elements)
+        try icns.write(to: output, options: .atomic)
+    }
+
+    private static func appendBigEndian(_ value: UInt32, to data: inout Data) {
+        var encoded = value.bigEndian
+        withUnsafeBytes(of: &encoded) { data.append(contentsOf: $0) }
     }
 }
 
